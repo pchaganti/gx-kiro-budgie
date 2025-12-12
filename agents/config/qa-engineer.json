@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+  "name": "qa-engineer",
+  "description": "sub-agent:Expert in testing, quality assurance, bug reporting, and test automation. Use for: test planning, integration testing, regression testing, bug reporting.",
+  "prompt": null,
+  "mcpServers": {},
+  "tools": [
+    "*"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "web_search"
+  ],
+  "resources": [
+    "file://{{KIRO_DIR}}/sub-agents/prompts/qa-engineer.md"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "{{HOOK_NOTIFY}} --agent-name \"qa-engineer\"",
+        "timeout_ms": 10000,
+        "max_output_size": 1024,
+        "cache_ttl_seconds": 0
+      }
+    ]
+  },
+  "toolsSettings": {},
+  "useLegacyMcpJson": true
+}

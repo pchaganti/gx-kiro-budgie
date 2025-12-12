@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+  "name": "agent-creator",
+  "description": "sub-agent:Create new sub-agents following established patterns. Use for: generating agent configs, creating prompt files, ensuring consistency with existing agents.",
+  "prompt": null,
+  "mcpServers": {},
+  "tools": [
+    "*"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "fs_read",
+    "fs_write"
+  ],
+  "resources": [
+    "file://{{KIRO_DIR}}/sub-agents/prompts/agent-creator.md"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "{{HOOK_NOTIFY}} --agent-name \"agent-creator\"",
+        "timeout_ms": 10000,
+        "max_output_size": 1024,
+        "cache_ttl_seconds": 0
+      }
+    ]
+  },
+  "toolsSettings": {},
+  "useLegacyMcpJson": true
+}

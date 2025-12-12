@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+  "name": "architect",
+  "description": "sub-agent:Expert in technical design, ADRs, API contracts, database design, security review, and performance considerations. Use for: architecture decisions, technical design, system design, security review.",
+  "prompt": null,
+  "mcpServers": {},
+  "tools": [
+    "*"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "fs_read",
+    "fs_write",
+    "web_search"
+  ],
+  "resources": [
+    "file://{{KIRO_DIR}}/sub-agents/prompts/architect.md"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "{{HOOK_NOTIFY}} --agent-name \"architect\"",
+        "timeout_ms": 10000,
+        "max_output_size": 1024,
+        "cache_ttl_seconds": 0
+      }
+    ]
+  },
+  "toolsSettings": {},
+  "useLegacyMcpJson": true
+}

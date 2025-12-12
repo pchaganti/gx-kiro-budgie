@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+  "name": "code-reviewer",
+  "description": "sub-agent:Expert in code review, identifying bugs, security issues, and ensuring code quality. Use for: reviewing pull requests, checking code standards, identifying issues.",
+  "prompt": null,
+  "mcpServers": {},
+  "tools": [
+    "*"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "fs_read",
+    "fs_write"
+  ],
+  "resources": [
+    "file://{{KIRO_DIR}}/sub-agents/prompts/code-reviewer.md"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "{{HOOK_NOTIFY}} --agent-name \"code-reviewer\"",
+        "timeout_ms": 10000,
+        "max_output_size": 1024,
+        "cache_ttl_seconds": 0
+      }
+    ]
+  },
+  "toolsSettings": {},
+  "useLegacyMcpJson": true
+}

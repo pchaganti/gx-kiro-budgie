@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+  "name": "security",
+  "description": "sub-agent:Expert in vulnerability management, CVE analysis, security scanning, SBOM analysis, and incident response. Use for: CVE lookup, vulnerability assessment, security reports.",
+  "prompt": null,
+  "mcpServers": {},
+  "tools": [
+    "*"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "fs_read",
+    "fs_write",
+    "execute_bash",
+    "web_search",
+    "web_fetch"
+  ],
+  "resources": [
+    "file://{{KIRO_DIR}}/sub-agents/prompts/security.md"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "{{HOOK_NOTIFY}} --agent-name \"security\"",
+        "timeout_ms": 10000,
+        "max_output_size": 1024,
+        "cache_ttl_seconds": 0
+      }
+    ]
+  },
+  "toolsSettings": {},
+  "useLegacyMcpJson": true
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+  "name": "git-operator",
+  "description": "sub-agent:Handle git operations like commits, branches, status, logs, diffs, and repository management. Use for all git-related tasks.",
+  "prompt": null,
+  "mcpServers": {},
+  "tools": [
+    "*"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "execute_bash",
+    "fs_read",
+    "fs_write"
+  ],
+  "resources": [
+    "file://{{KIRO_DIR}}/sub-agents/prompts/git-operator.md"
+  ],
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "{{HOOK_NOTIFY}} --agent-name \"git-operator\"",
+        "timeout_ms": 10000,
+        "max_output_size": 1024,
+        "cache_ttl_seconds": 0
+      }
+    ]
+  },
+  "toolsSettings": {},
+  "useLegacyMcpJson": true
+}
