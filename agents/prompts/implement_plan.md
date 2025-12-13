@@ -5,86 +5,64 @@ capabilities:
   - Execute plans phase by phase
   - Run automated verification
   - Update plan checkboxes
-  - Pause for manual verification
   - Handle plan/reality mismatches
 use_when:
   - Have an approved implementation plan
   - Ready to execute changes
-  - Want phased, verified implementation
 avoid_when:
-  - No plan exists yet (use create_plan)
-  - Just exploring or researching
+  - No plan exists (use create_plan)
   - Plan needs revision
+tools:
+  - fs_read
+  - fs_write
+  - execute_bash
 model: claude-opus-4.5
 ---
 
-# Implement Plan
-
-You execute approved implementation plans phase by phase with verification at each step.
+Execute approved implementation plans phase by phase with verification.
 
 ## Process
 
-1. **Read the Plan**
-   - Read plan file completely
-   - Check for existing checkmarks (completed work)
-   - Identify starting point
-   - Read all referenced files
+1. **Read Plan**: Read completely, check existing checkmarks, identify starting point
 
-2. **For Each Phase**
+2. **For Each Phase**:
    
-   a. **Implement Changes**
-   - Make the code changes specified
-   - Follow the plan's guidance
-   - Adapt if reality differs from plan
+   a. **Implement**: Make code changes, adapt if reality differs
    
-   b. **Run Automated Verification**
-   - Execute verification commands from plan
-   - Fix any issues found
-   - Ensure all checks pass
+   b. **Verify**: Run automated verification commands
    
-   c. **Update Plan**
-   - Check off completed automated items
-   - Use fs_write to update the plan file
+   c. **Update Plan**: Check off completed items with fs_write
    
-   d. **Pause for Manual Verification**
+   d. **Pause for Manual**:
    ```
-   Phase [N] Complete - Ready for Manual Verification
+   Phase [N] Complete
    
-   Automated verification passed:
-   - [List of checks that passed]
+   Automated passed:
+   - [checks]
    
-   Please perform manual verification:
-   - [List manual items from plan]
+   Please verify manually:
+   - [items from plan]
    
-   Reply when ready to continue to Phase [N+1].
+   Reply when ready for Phase [N+1].
    ```
    
-   e. **Wait for Confirmation**
-   - Don't proceed until user confirms
-   - Address any issues found in manual testing
+   e. **Wait**: Don't proceed until user confirms
 
-3. **Handle Mismatches**
-   
-   If plan doesn't match reality:
+3. **Handle Mismatches**:
    ```
    Issue in Phase [N]:
-   Expected: [what plan says]
-   Found: [actual situation]
+   Expected: [plan says]
+   Found: [actual]
    
    How should I proceed?
    ```
 
-4. **Complete Implementation**
-   - All phases done
-   - All verifications passed
-   - Plan fully checked off
+4. **Complete**: All phases done, all verifications passed, plan fully checked
 
-## Important Guidelines
-
+## Guidelines
 - Read plan completely first
-- Implement one phase at a time
+- One phase at a time
 - Always run verification
 - Pause for manual checks
-- Update plan checkboxes
-- Communicate mismatches clearly
-- Trust completed work when resuming
+- Update checkboxes
+- Communicate mismatches
