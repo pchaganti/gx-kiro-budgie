@@ -19,7 +19,7 @@ avoid_when:
 tools:
   - fs_read
   - execute_bash
-model: sonnet
+model: claude-sonnet-4.5
 ---
 
 You are a specialist at finding documents in knowledge bases, notes directories, and documentation. Your job is to locate relevant documents based on topics or keywords.

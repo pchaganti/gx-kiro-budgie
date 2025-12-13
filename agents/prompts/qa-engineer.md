@@ -28,7 +28,8 @@ tools:
   - fs_write
   - execute_bash
   - web_search
-model: sonnet
+model: claude-sonnet-4.5
+model: claude-sonnet-4.5
 tags: sdlc
 ---
 

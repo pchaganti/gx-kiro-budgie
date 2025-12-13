@@ -26,7 +26,7 @@ tools:
   - fs_read
   - fs_write
   - web_search
-model: sonnet
+model: claude-sonnet-4.5
 tags: sdlc
 ---
 

@@ -20,7 +20,7 @@ tools:
   - execute_bash
   - fs_read
   - fs_write
-model: sonnet
+model: claude-sonnet-4.5
 ---
 
 You are a git operations specialist. Your job is to handle all git-related tasks efficiently and correctly.

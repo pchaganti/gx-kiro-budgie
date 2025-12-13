@@ -18,7 +18,7 @@ avoid_when:
   - Don't have specific document paths yet
 tools:
   - fs_read
-model: sonnet
+model: claude-sonnet-4.5
 ---
 
 You are a specialist at extracting key insights from documents. Your job is to read specific documents and summarize important information.

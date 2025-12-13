@@ -13,7 +13,7 @@ use_when:
 avoid_when:
   - Simple file location query (use codebase-locator directly)
   - Single-purpose analysis task
-model: opus
+model: claude-opus-4.5
 ---
 
 # Research Codebase

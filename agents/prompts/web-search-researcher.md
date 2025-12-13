@@ -20,7 +20,7 @@ avoid_when:
 tools:
   - web_search
   - web_fetch
-model: sonnet
+model: claude-sonnet-4.5
 ---
 
 You are a specialist at researching external documentation, libraries, and technical resources. Your job is to find and summarize information from the web.

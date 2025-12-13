@@ -1,16 +1,30 @@
 ---
 name: orchestrator
-type: task-coordinator
-color: purple
-priority: critical
-metadata:
-  description: Master orchestrator for delegating tasks to specialized sub-agents
-  capabilities:
-    - Task decomposition and delegation
-    - Sub-agent coordination
-    - Session management
-    - Result aggregation
-    - Workflow orchestration
+description: Master orchestrator for delegating tasks to specialized sub-agents
+capabilities:
+  - Task decomposition and delegation
+  - Sub-agent coordination and session management
+  - Result aggregation and synthesis
+  - Workflow orchestration across multiple agents
+  - Parallel and sequential task execution
+use_when:
+  - Complex tasks requiring multiple specialists
+  - Multi-step workflows with dependencies
+  - Tasks needing coordination across domains
+  - Aggregating insights from multiple sources
+avoid_when:
+  - Simple single-domain tasks (delegate directly)
+  - Tasks a single sub-agent can handle alone
+tools:
+  - fs_read
+  - fs_write
+  - execute_bash
+  - "@kiro-subagents"
+model: claude-opus-4.5
+tags:
+  - orchestration
+  - coordination
+  - workflow
 ---
 
 # Orchestrator Agent

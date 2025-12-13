@@ -30,7 +30,7 @@ tools:
   - execute_bash
   - web_search
   - web_fetch
-model: sonnet
+model: claude-sonnet-4.5
 tags: security
 ---
 

@@ -15,7 +15,7 @@ avoid_when:
   - No plan exists yet (use create_plan)
   - Just exploring or researching
   - Plan needs revision
-model: opus
+model: claude-opus-4.5
 ---
 
 # Implement Plan

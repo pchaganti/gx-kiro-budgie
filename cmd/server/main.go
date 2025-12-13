@@ -144,16 +144,20 @@ func main() {
 
 		toolName := agents.NormalizeToolName(agentName, cfg.ToolPrefix)
 		description := agents.FilterDescription(agent.Description)
+		model := "claude-sonnet-4.5"
 		
 		// Try to load frontmatter from prompt file
 		if metadata, err := frontmatter.LoadFromPrompt(cfg.PromptsDir, agentName); err == nil && metadata != nil {
 			description = metadata.EnhancedDescription()
-			log.Printf("Loaded frontmatter for %s", agentName)
+			if metadata.Model != "" {
+				model = metadata.Model
+			}
+			log.Printf("Loaded frontmatter for %s (model: %s)", agentName, model)
 		} else if err != nil {
 			log.Printf("Failed to load frontmatter for %s: %v", agentName, err)
 		}
 		
-		handler := createHandler(agentName, sessionMgr, executor, cfg)
+		handler := createHandler(agentName, model, sessionMgr, executor, cfg)
 		tool := &mcp.Tool{
 			Name:        toolName,
 			Description: description,
@@ -222,7 +226,7 @@ func main() {
 	sessionMgr.Cleanup()
 }
 
-func createHandler(agentName string, sessionMgr *sessions.Manager, executor *kiro.Executor, cfg *config.Config) func(context.Context, *mcp.CallToolRequest, ToolInput) (*mcp.CallToolResult, ToolOutput, error) {
+func createHandler(agentName, model string, sessionMgr *sessions.Manager, executor *kiro.Executor, cfg *config.Config) func(context.Context, *mcp.CallToolRequest, ToolInput) (*mcp.CallToolResult, ToolOutput, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input ToolInput) (*mcp.CallToolResult, ToolOutput, error) {
 		if input.Prompt == "" {
 			return nil, ToolOutput{}, fmt.Errorf("prompt is required")
@@ -253,7 +257,7 @@ func createHandler(agentName string, sessionMgr *sessions.Manager, executor *kir
 			enhancedPrompt = enhancedPrompt + "\n\n" + systemPrompt
 		}
 
-		result := executor.Execute(ctx, agentName, enhancedPrompt, sessionDir, input.SessionID)
+		result := executor.Execute(ctx, agentName, enhancedPrompt, sessionDir, input.SessionID, model)
 		if result.Error != nil {
 			return nil, ToolOutput{}, fmt.Errorf("%v", result.Error)
 		}
@@ -266,7 +270,7 @@ func createHandler(agentName string, sessionMgr *sessions.Manager, executor *kir
 			// Fallback: Request file creation using template
 			fallbackPrompt := strings.ReplaceAll(string(contextSummaryTemplate), "{{RESPONSE_FILE}}", responseFile)
 			
-			fallbackResult := executor.Execute(ctx, agentName, fallbackPrompt, sessionDir, input.SessionID)
+			fallbackResult := executor.Execute(ctx, agentName, fallbackPrompt, sessionDir, input.SessionID, model)
 			if fallbackResult.Error == nil {
 				// Try reading file again after fallback
 				if content, err := os.ReadFile(responsePath); err == nil {

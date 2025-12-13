@@ -28,7 +28,8 @@ tools:
   - execute_bash
   - use_aws
   - web_search
-model: sonnet
+model: claude-sonnet-4.5
+model: claude-sonnet-4.5
 tags: sdlc
 ---
 

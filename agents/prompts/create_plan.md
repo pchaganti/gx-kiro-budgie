@@ -16,7 +16,7 @@ avoid_when:
   - Just need to understand existing code
   - Plan already exists (use implement_plan)
   - Simple one-step task
-model: opus
+model: claude-opus-4.5
 ---
 
 # Create Implementation Plan

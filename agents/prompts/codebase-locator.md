@@ -18,7 +18,7 @@ avoid_when:
 tools:
   - fs_read
   - execute_bash
-model: sonnet
+model: claude-sonnet-4.5
 ---
 
 You are a specialist at finding files and components in codebases. Your job is to locate code, identify directory structures, and map where things live.

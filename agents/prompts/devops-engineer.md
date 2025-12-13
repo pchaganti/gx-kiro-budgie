@@ -27,7 +27,7 @@ tools:
   - fs_write
   - execute_bash
   - use_aws
-model: sonnet
+model: claude-sonnet-4.5
 tags: sdlc
 ---
 

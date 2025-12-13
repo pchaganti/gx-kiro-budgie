@@ -25,7 +25,7 @@ avoid_when:
 tools:
   - fs_read
   - fs_write
-model: sonnet
+model: claude-sonnet-4.5
 tags: sdlc
 ---
 

@@ -47,14 +47,14 @@ func GetUniqueResponseFile(sessionDir string) string {
 	}
 }
 
-func (e *Executor) Execute(ctx context.Context, agentName, prompt, sessionDir, sessionID string) Result {
+func (e *Executor) Execute(ctx context.Context, agentName, prompt, sessionDir, sessionID, model string) Result {
 	start := time.Now()
 
-	result := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID)
+	result := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID, model)
 
 	if result.Error != nil && shouldRetry(result.Error) {
 		time.Sleep(2 * time.Second)
-		retryResult := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID)
+		retryResult := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID, model)
 		retryResult.Retried = true
 
 		if retryResult.Error == nil {
@@ -81,11 +81,15 @@ func (e *Executor) Execute(ctx context.Context, agentName, prompt, sessionDir, s
 	return result
 }
 
-func (e *Executor) executeOnce(ctx context.Context, agentName, prompt, sessionDir, sessionID string) Result {
+func (e *Executor) executeOnce(ctx context.Context, agentName, prompt, sessionDir, sessionID, model string) Result {
 	timeoutCtx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
 
 	args := []string{"chat", "--agent", agentName, "--no-interactive"}
+
+	if model != "" {
+		args = append(args, "--model", model)
+	}
 
 	if sessionID != "" {
 		args = append(args, "--resume")

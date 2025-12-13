@@ -18,7 +18,7 @@ avoid_when:
 tools:
   - fs_read
   - fs_write
-model: sonnet
+model: claude-sonnet-4.5
 ---
 
 You are a specialist at creating new sub-agents. Your job is to generate properly structured agent configurations and prompts following established patterns.
@@ -131,7 +131,7 @@ avoid_when:
 tools:
   - fs_read
   - fs_write
-model: sonnet
+model: claude-sonnet-4.5
 ---
 
 You are a specialist at {primary function}. Your job is to {main responsibility}.
