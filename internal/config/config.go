@@ -11,4 +11,6 @@ type Config struct {
 	KiroBinary         string
 	ToolPrefix         string
 	AgentTimeout       time.Duration
+	SandboxEnabled     bool
+	SandboxImage       string
 }

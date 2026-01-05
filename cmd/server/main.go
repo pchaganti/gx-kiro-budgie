@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,8 @@ func main() {
 	kiroBinary := flag.String("kiro-binary", "kiro-cli", "Path to kiro-cli binary")
 	toolPrefix := flag.String("tool-prefix", "kiro-subagents.", "Prefix for registered tool names")
 	agentTimeout := flag.Duration("agent-timeout", 10*time.Minute, "Timeout for agent execution")
+	sandboxEnabled := flag.Bool("sandbox", false, "Enable sandbox mode (run agents in Docker containers)")
+	sandboxImage := flag.String("sandbox-image", "budgie-sandbox:latest", "Docker image for sandbox mode")
 	debug := flag.Bool("debug", false, "Print tool information and exit")
 	flag.Parse()
 
@@ -61,20 +64,22 @@ func main() {
 
 	// Initialize config
 	cfg := &config.Config{
-		AgentsDir:            *agentsDir,
-		SessionsDir:          *sessionsDir,
-		PromptsDir:           *promptsDir,
-		SystemPromptPath:     *systemPromptPath,
-		ContextSummaryPath:   *contextSummaryPath,
-		KiroBinary:           *kiroBinary,
-		ToolPrefix:           *toolPrefix,
-		AgentTimeout:         *agentTimeout,
+		AgentsDir:          *agentsDir,
+		SessionsDir:        *sessionsDir,
+		PromptsDir:         *promptsDir,
+		SystemPromptPath:   *systemPromptPath,
+		ContextSummaryPath: *contextSummaryPath,
+		KiroBinary:         *kiroBinary,
+		ToolPrefix:         *toolPrefix,
+		AgentTimeout:       *agentTimeout,
+		SandboxEnabled:     *sandboxEnabled,
+		SandboxImage:       *sandboxImage,
 	}
 
 	// Create dependencies
 	healthMonitor := health.NewMonitor()
-	sessionMgr := sessions.NewManager(cfg.SessionsDir)
-	executor := kiro.NewExecutor(cfg.KiroBinary, cfg.AgentTimeout, healthMonitor)
+	sessionMgr := sessions.NewManager(cfg.SessionsDir, cfg.SandboxEnabled)
+	executor := kiro.NewExecutor(cfg.KiroBinary, cfg.AgentTimeout, healthMonitor, cfg.SandboxEnabled, cfg.SandboxImage)
 
 	// Debug mode: print tool information and exit
 	if *debug {
@@ -219,6 +224,9 @@ func main() {
 	log.Printf("Registered health-check tool")
 
 	log.Printf("Starting Kiro sub-agents MCP server with %d agents", len(agentList))
+	if cfg.SandboxEnabled {
+		log.Printf("Sandbox mode enabled with image: %s", cfg.SandboxImage)
+	}
 	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
@@ -245,39 +253,67 @@ func createHandler(agentName, model string, sessionMgr *sessions.Manager, execut
 
 		// Generate unique response file name
 		responseFile := kiro.GetUniqueResponseFile(sessionDir)
-		responsePath := filepath.Join(sessionDir, responseFile)
+
+		// Determine working directory path for prompt
+		workingDir := input.Directory
+		if cfg.SandboxEnabled {
+			workingDir = "/workspace"
+		}
 
 		// Augment prompt with directory instruction
-		enhancedPrompt := fmt.Sprintf("In directory %s, %s", input.Directory, input.Prompt)
+		enhancedPrompt := fmt.Sprintf("In directory %s, %s", workingDir, input.Prompt)
 
 		// Load and inject system prompt with response file placeholder
 		if systemPromptTemplate, err := os.ReadFile(cfg.SystemPromptPath); err == nil {
-			systemPrompt := strings.ReplaceAll(string(systemPromptTemplate), "{{RESPONSE_FILE}}", responseFile)
-			systemPrompt = strings.ReplaceAll(systemPrompt, "{{WORKING_DIRECTORY}}", input.Directory)
+			// In sandbox mode, response file goes to session volume, not workspace
+			responseFilePath := responseFile
+			if cfg.SandboxEnabled {
+				responseFilePath = "/root/.local/share/kiro-cli/" + responseFile
+			}
+			systemPrompt := strings.ReplaceAll(string(systemPromptTemplate), "{{RESPONSE_FILE}}", responseFilePath)
+			systemPrompt = strings.ReplaceAll(systemPrompt, "{{WORKING_DIRECTORY}}", workingDir)
 			enhancedPrompt = enhancedPrompt + "\n\n" + systemPrompt
 		}
 
-		result := executor.Execute(ctx, agentName, enhancedPrompt, sessionDir, input.SessionID, model)
+		// Pass working directory for sandbox mount
+		result := executor.ExecuteWithWorkDir(ctx, agentName, enhancedPrompt, sessionDir, input.SessionID, model, input.Directory)
 		if result.Error != nil {
 			return nil, ToolOutput{}, fmt.Errorf("%v", result.Error)
 		}
 
+		// Determine response file path
+		var responsePath string
+		if cfg.SandboxEnabled {
+			// In sandbox mode, we need to read from the volume
+			// Use docker cp or mount inspection - for now use docker run to cat the file
+			responsePath = responseFile // Will be handled by readResponseFromVolume
+		} else {
+			responsePath = filepath.Join(sessionDir, responseFile)
+		}
+
 		// Try to read response file first
 		responseOutput := result.Output
-		if content, err := os.ReadFile(responsePath); err == nil {
+		if cfg.SandboxEnabled {
+			if content := readResponseFromVolume(sessionID, responseFile); content != "" {
+				responseOutput = content
+			}
+		} else if content, err := os.ReadFile(responsePath); err == nil {
 			responseOutput = strings.TrimSpace(string(content))
 		} else if contextSummaryTemplate, err := os.ReadFile(cfg.ContextSummaryPath); err == nil {
 			// Fallback: Request file creation using template
 			fallbackPrompt := strings.ReplaceAll(string(contextSummaryTemplate), "{{RESPONSE_FILE}}", responseFile)
-			
-			fallbackResult := executor.Execute(ctx, agentName, fallbackPrompt, sessionDir, input.SessionID, model)
+
+			fallbackResult := executor.ExecuteWithWorkDir(ctx, agentName, fallbackPrompt, sessionDir, input.SessionID, model, input.Directory)
 			if fallbackResult.Error == nil {
 				// Try reading file again after fallback
-				if content, err := os.ReadFile(responsePath); err == nil {
+				if cfg.SandboxEnabled {
+					if content := readResponseFromVolume(sessionID, responseFile); content != "" {
+						responseOutput = content
+					}
+				} else if content, err := os.ReadFile(responsePath); err == nil {
 					responseOutput = strings.TrimSpace(string(content))
 				}
 			}
-			// If still no file, use original stdout (already in responseOutput)
 		}
 
 		return nil, ToolOutput{
@@ -285,4 +321,18 @@ func createHandler(agentName, model string, sessionMgr *sessions.Manager, execut
 			SessionID: sessionID,
 		}, nil
 	}
+}
+
+func readResponseFromVolume(sessionID, responseFile string) string {
+	volumeName := "budgie-session-" + sessionID
+	cmd := exec.Command("docker", "run", "--rm",
+		"-v", volumeName+":/data:ro",
+		"alpine:latest",
+		"cat", "/data/"+responseFile)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }

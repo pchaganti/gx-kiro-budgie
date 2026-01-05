@@ -19,12 +19,87 @@ This is a 5-6 hour personal side project—don't expect enterprise-grade code. I
 - **Health metrics** tracking success rate, duration, and failures per agent
 - **Mandatory directory parameter** for security and explicit working directory control
 - **Response file decoupling** - agent responses written to session directory, not working directory
+- **Sandbox mode** - run sub-agents in isolated Docker containers for security
 
 ## Installation
 
 ```bash
 go build -o budgie ./cmd/server
 ```
+
+## Sandbox Mode
+
+Sandbox mode runs each sub-agent inside an isolated Docker container, providing:
+- **Filesystem isolation** - agents can only access the mounted working directory
+- **Credential protection** - no access to host credentials (`~/.aws/`, `~/.ssh/`, etc.)
+- **Controlled execution** - limits blast radius of agent actions
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Host (macOS/Linux)                       │
+│                                                                  │
+│  ┌──────────────┐                                               │
+│  │   Budgie     │                                               │
+│  │  MCP Server  │                                               │
+│  └──────┬───────┘                                               │
+│         │                                                        │
+│         │ docker run                                             │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Docker Container                            │    │
+│  │                                                          │    │
+│  │  /workspace        ← working directory (RW)             │    │
+│  │  /root/.local/share/kiro-cli  ← session volume (RW)     │    │
+│  │  /auth             ← host kiro auth (RO)                │    │
+│  │  /root/.kiro/      ← agent configs (RO)                 │    │
+│  │                                                          │    │
+│  │  kiro-cli chat --agent <name> --no-interactive <prompt> │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  Docker Volumes:                                                 │
+│  budgie-session-<uuid> ← one per session, deleted on exit       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Prerequisites
+
+1. **Docker** installed and running
+2. **Sandbox image** built:
+   ```bash
+   docker build -t budgie-sandbox:latest .
+   ```
+
+### Usage
+
+```bash
+# Enable sandbox mode
+./budgie --sandbox
+
+# With custom image
+./budgie --sandbox --sandbox-image my-custom-image:latest
+```
+
+### Container Mounts
+
+| Source (Host) | Container Path | Mode | Purpose |
+|---------------|----------------|------|---------|
+| Working directory | `/workspace` | RW | User's project files |
+| Docker volume | `/root/.local/share/kiro-cli` | RW | Session state |
+| `~/Library/Application Support/kiro-cli/` | `/auth` | RO | Auth tokens |
+| `~/.kiro/` | `/root/.kiro/` | RO | Agent configs |
+
+### Session Isolation
+
+Each session gets its own Docker volume (`budgie-session-<uuid>`), ensuring:
+- Complete isolation between sessions
+- No SQLite contention
+- Clean cleanup on budgie exit
+
+For detailed implementation notes, see [SANDBOX.md](SANDBOX.md).
+
+---
 
 ## Usage
 
@@ -53,6 +128,10 @@ Add to your orchestrator agent's `mcpServers` configuration:
 
 # Custom timeout (default: 10 minutes)
 ./budgie --agent-timeout 5m
+
+# Sandbox mode (run agents in Docker containers)
+./budgie --sandbox
+./budgie --sandbox --sandbox-image custom-image:latest
 
 # Custom paths
 ./budgie --agents-dir /custom/agents \

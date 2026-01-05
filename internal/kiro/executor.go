@@ -7,17 +7,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"budgie/internal/health"
+
 	"github.com/google/uuid"
 )
 
 type Executor struct {
-	binary  string
-	timeout time.Duration
-	monitor *health.Monitor
+	binary         string
+	timeout        time.Duration
+	monitor        *health.Monitor
+	sandboxEnabled bool
+	sandboxImage   string
+	kiroConfigDir  string
+	authSourceDir  string
 }
 
 type Result struct {
@@ -28,33 +34,59 @@ type Result struct {
 	Retried   bool
 }
 
-func NewExecutor(binary string, timeout time.Duration, monitor *health.Monitor) *Executor {
+func NewExecutor(binary string, timeout time.Duration, monitor *health.Monitor, sandboxEnabled bool, sandboxImage string) *Executor {
+	homeDir, _ := os.UserHomeDir()
+
+	var authSourceDir string
+	if runtime.GOOS == "darwin" {
+		authSourceDir = filepath.Join(homeDir, "Library", "Application Support", "kiro-cli")
+	} else {
+		authSourceDir = filepath.Join(homeDir, ".local", "share", "kiro-cli")
+	}
+
 	return &Executor{
-		binary:  binary,
-		timeout: timeout,
-		monitor: monitor,
+		binary:         binary,
+		timeout:        timeout,
+		monitor:        monitor,
+		sandboxEnabled: sandboxEnabled,
+		sandboxImage:   sandboxImage,
+		kiroConfigDir:  filepath.Join(homeDir, ".kiro"),
+		authSourceDir:  authSourceDir,
 	}
 }
 
 // GetUniqueResponseFile generates a unique response filename for a workspace
 func GetUniqueResponseFile(sessionDir string) string {
-	for {
-		responseFile := fmt.Sprintf("response-%s.txt", uuid.New().String()[:8])
-		responsePath := filepath.Join(sessionDir, responseFile)
-		if _, err := os.Stat(responsePath); os.IsNotExist(err) {
-			return responseFile
-		}
-	}
+	return fmt.Sprintf("response-%s.txt", uuid.New().String()[:8])
+}
+
+// GetAuthSourceDir returns the auth source directory
+func (e *Executor) GetAuthSourceDir() string {
+	return e.authSourceDir
+}
+
+// BuildDirectCommand builds a direct kiro-cli command (for testing)
+func (e *Executor) BuildDirectCommand(ctx context.Context, agentName, prompt, sessionDir, sessionID, model string) *exec.Cmd {
+	return e.buildDirectCommand(ctx, agentName, prompt, sessionDir, sessionID, model)
+}
+
+// BuildDockerCommand builds a Docker command (for testing)
+func (e *Executor) BuildDockerCommand(ctx context.Context, agentName, prompt, sessionDir, sessionID, model, workDir string) *exec.Cmd {
+	return e.buildDockerCommand(ctx, agentName, prompt, sessionDir, sessionID, model, workDir)
 }
 
 func (e *Executor) Execute(ctx context.Context, agentName, prompt, sessionDir, sessionID, model string) Result {
+	return e.ExecuteWithWorkDir(ctx, agentName, prompt, sessionDir, sessionID, model, "")
+}
+
+func (e *Executor) ExecuteWithWorkDir(ctx context.Context, agentName, prompt, sessionDir, sessionID, model, workDir string) Result {
 	start := time.Now()
 
-	result := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID, model)
+	result := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID, model, workDir)
 
 	if result.Error != nil && shouldRetry(result.Error) {
 		time.Sleep(2 * time.Second)
-		retryResult := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID, model)
+		retryResult := e.executeOnce(ctx, agentName, prompt, sessionDir, sessionID, model, workDir)
 		retryResult.Retried = true
 
 		if retryResult.Error == nil {
@@ -81,24 +113,17 @@ func (e *Executor) Execute(ctx context.Context, agentName, prompt, sessionDir, s
 	return result
 }
 
-func (e *Executor) executeOnce(ctx context.Context, agentName, prompt, sessionDir, sessionID, model string) Result {
+func (e *Executor) executeOnce(ctx context.Context, agentName, prompt, sessionDir, sessionID, model, workDir string) Result {
 	timeoutCtx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
 
-	args := []string{"chat", "--agent", agentName, "--no-interactive"}
+	var cmd *exec.Cmd
 
-	if model != "" {
-		args = append(args, "--model", model)
+	if e.sandboxEnabled {
+		cmd = e.buildDockerCommand(timeoutCtx, agentName, prompt, sessionDir, sessionID, model, workDir)
+	} else {
+		cmd = e.buildDirectCommand(timeoutCtx, agentName, prompt, sessionDir, sessionID, model)
 	}
-
-	if sessionID != "" {
-		args = append(args, "--resume")
-	}
-
-	args = append(args, prompt)
-
-	cmd := exec.CommandContext(timeoutCtx, e.binary, args...)
-	cmd.Dir = sessionDir
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -121,6 +146,57 @@ func (e *Executor) executeOnce(ctx context.Context, agentName, prompt, sessionDi
 		Output: strings.TrimSpace(stdout.String()),
 		Error:  nil,
 	}
+}
+
+func (e *Executor) buildDirectCommand(ctx context.Context, agentName, prompt, sessionDir, sessionID, model string) *exec.Cmd {
+	args := []string{"chat", "--agent", agentName, "--no-interactive"}
+
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+
+	if sessionID != "" {
+		args = append(args, "--resume")
+	}
+
+	args = append(args, prompt)
+
+	cmd := exec.CommandContext(ctx, e.binary, args...)
+	cmd.Dir = sessionDir
+	return cmd
+}
+
+func (e *Executor) buildDockerCommand(ctx context.Context, agentName, prompt, sessionDir, sessionID, model, workDir string) *exec.Cmd {
+	volumeName := "budgie-session-" + sessionDir
+
+	args := []string{
+		"run", "--rm",
+		"-v", volumeName + ":/root/.local/share/kiro-cli:rw",
+		"-v", e.authSourceDir + ":/auth:ro",
+		"-v", e.kiroConfigDir + ":/root/.kiro:ro",
+	}
+
+	if workDir != "" {
+		args = append(args, "-v", workDir+":/workspace:rw")
+	}
+
+	args = append(args, e.sandboxImage)
+
+	kiroArgs := []string{"kiro-cli", "chat", "--agent", agentName, "--no-interactive"}
+
+	if model != "" {
+		kiroArgs = append(kiroArgs, "--model", model)
+	}
+
+	if sessionID != "" {
+		kiroArgs = append(kiroArgs, "--resume")
+	}
+
+	kiroArgs = append(kiroArgs, prompt)
+
+	args = append(args, kiroArgs...)
+
+	return exec.CommandContext(ctx, "docker", args...)
 }
 
 func shouldRetry(err error) bool {
