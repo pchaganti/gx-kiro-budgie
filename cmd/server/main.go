@@ -280,7 +280,11 @@ func createHandler(agentName, model string, sessionMgr *sessions.Manager, execut
 		// Pass working directory for sandbox mount
 		result := executor.ExecuteWithWorkDir(ctx, agentName, enhancedPrompt, sessionDir, input.SessionID, model, input.Directory, responseFile)
 		if result.Error != nil {
-			return nil, ToolOutput{}, fmt.Errorf("%v", result.Error)
+			// Return error in response body with sessionID so orchestrator can retry
+			return nil, ToolOutput{
+				Response:  fmt.Sprintf("ERROR: %v", result.Error),
+				SessionID: sessionID,
+			}, nil
 		}
 
 		// Determine response file path
