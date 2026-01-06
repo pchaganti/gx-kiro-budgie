@@ -51,7 +51,7 @@ func (m *Manager) GetWorkspaceDir(sessionID string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		sessionDir = filepath.Join(homeDir, ".kiro", "sub-agents", sessionID)
+		sessionDir = filepath.Join(homeDir, ".kiro", "sub-agents", "sessions", sessionID)
 	}
 
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {

@@ -5,7 +5,7 @@ budgie/
 ├── cmd/server/main.go      # Entry point, MCP server setup, tool registration
 ├── internal/
 │   ├── agents/             # Agent loading from JSON files
-│   │   ├── loader.go       # Load(), FilterDescription(), IsSubAgent(), NormalizeToolName()
+│   │   ├── loader.go       # Load(), FilterDescription(), IsSubAgent(), NormalizeToolName(name, prefix)
 │   │   └── loader_test.go
 │   ├── config/             # Configuration struct
 │   │   └── config.go       # Config{} with all CLI flag values
@@ -17,16 +17,18 @@ budgie/
 │   ├── kiro/               # Kiro CLI executor
 │   │   ├── executor.go     # Execute(), ExecuteWithWorkDir(), retry logic
 │   │   └── executor_test.go
-│   ├── sandbox/            # Sandbox mode tests
+│   ├── sandbox/            # Sandbox mode integration tests
 │   │   └── sandbox_test.go
 │   └── sessions/           # Session management
 │       ├── session.go      # Manager, GetWorkspaceDir(), Cleanup()
 │       └── session_test.go
+├── agents/                 # Source agent configs (copied to ~/.kiro/ on install)
+│   ├── config/*.json       # Agent JSON definitions
+│   └── prompts/*.md        # Agent prompt files with frontmatter
 ├── docker/
 │   └── entrypoint.sh       # Container entrypoint for auth sync
 ├── Dockerfile              # Sandbox image definition
 ├── README.md
-├── SANDBOX.md              # Sandbox feature specification
 ├── Makefile
 └── go.mod
 ```
@@ -74,6 +76,11 @@ budgie/
 
 ## File Locations
 
+**Source (in repo):**
+- Agent JSON files: `agents/config/*.json`
+- Agent prompts: `agents/prompts/*.md`
+
+**Installed (after `make install`):**
 - Agent JSON files: `~/.kiro/agents/*.json`
 - Agent prompts: `~/.kiro/sub-agents/prompts/{agent}.md`
 - Session workspaces: `~/.kiro/sub-agents/sessions/{uuid}/`

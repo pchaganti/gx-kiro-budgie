@@ -52,6 +52,11 @@ Use `flag` package with sensible defaults:
 flag.String("name", defaultValue, "description")
 ```
 
+## Model Configuration
+
+- Default model: `claude-sonnet-4.5`
+- Override per-agent via `model` field in frontmatter
+
 ## Docker
 
 - Image: `budgie-sandbox:latest`

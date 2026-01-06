@@ -67,9 +67,8 @@ func TestSandboxSessionIDRetrieval(t *testing.T) {
 // TestSandboxExecutorDockerCommand verifies Docker command construction
 func TestSandboxExecutorDockerCommand(t *testing.T) {
 	monitor := health.NewMonitor()
-	executor := kiro.NewExecutor("kiro-cli", 5*time.Minute, monitor, true, "budgie-sandbox:latest")
+	executor := kiro.NewExecutor("kiro-cli", 5*time.Minute, monitor, true, "budgie-sandbox:latest", false)
 
-	homeDir, _ := os.UserHomeDir()
 	sessionDir := "test-session-123"
 	agentName := "test-agent"
 	prompt := "test prompt"
@@ -124,7 +123,7 @@ func TestSandboxExecutorDockerCommand(t *testing.T) {
 // TestSandboxExecutorNormalMode verifies normal (non-sandbox) mode still works
 func TestSandboxExecutorNormalMode(t *testing.T) {
 	monitor := health.NewMonitor()
-	executor := kiro.NewExecutor("kiro-cli", 5*time.Minute, monitor, false, "")
+	executor := kiro.NewExecutor("kiro-cli", 5*time.Minute, monitor, false, "", false)
 
 	sessionDir := "/tmp/test-session"
 	agentName := "test-agent"
@@ -212,7 +211,7 @@ func TestSandboxMultipleSessions(t *testing.T) {
 // TestSandboxAuthPathDetection verifies correct auth path for different OS
 func TestSandboxAuthPathDetection(t *testing.T) {
 	monitor := health.NewMonitor()
-	executor := kiro.NewExecutor("kiro-cli", 5*time.Minute, monitor, true, "budgie-sandbox:latest")
+	executor := kiro.NewExecutor("kiro-cli", 5*time.Minute, monitor, true, "budgie-sandbox:latest", false)
 
 	if executor.GetAuthSourceDir() == "" {
 		t.Error("Auth source directory should not be empty")

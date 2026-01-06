@@ -146,18 +146,25 @@ Custom image required because kiro-cli must be Linux binary.
 ```dockerfile
 FROM buildpack-deps:bookworm
 
-RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jdk \
+# OpenJDK 21 (Eclipse Temurin)
+RUN apt-get update && apt-get install -y --no-install-recommends wget apt-transport-https gpg \
+    && wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" > /etc/apt/sources.list.d/adoptium.list \
+    && apt-get update && apt-get install -y --no-install-recommends temurin-21-jdk \
     && rm -rf /var/lib/apt/lists/*
 
+# kubectl
 RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /usr/share/keyrings/kubernetes.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/kubernetes.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" > /etc/apt/sources.list.d/kubernetes.list \
     && apt-get update && apt-get install -y --no-install-recommends kubectl \
     && rm -rf /var/lib/apt/lists/*
 
+# Additional dev tools
 RUN apt-get update && apt-get install -y --no-install-recommends jq tree ripgrep sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://kiro.dev/install.sh | sh
+# kiro-cli
+RUN curl -fsSL https://cli.kiro.dev/install | bash
 
 WORKDIR /workspace
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -168,6 +175,8 @@ ENTRYPOINT ["/entrypoint.sh"]
 **Entrypoint Script (`docker/entrypoint.sh`):**
 ```bash
 #!/bin/sh
+export PATH="$HOME/.local/bin:$PATH"
+
 KIRO_DATA_DIR="/root/.local/share/kiro-cli"
 AUTH_SOURCE="/auth/data.sqlite3"
 TARGET_DB="$KIRO_DATA_DIR/data.sqlite3"
@@ -248,8 +257,22 @@ Add to your orchestrator agent's `mcpServers` configuration:
 # Custom tool prefix (default: kiro-subagents.)
 ./budgie --tool-prefix my-agents.
 
-# Debug mode (print tool info and exit)
-./budgie --debug
+# List registered tools and exit
+./budgie --list-tools
+
+# Verbose mode (save chat debug logs to session directories)
+./budgie --verbose
+```
+
+### Model Selection
+
+The default model is `claude-sonnet-4.5`. Models can be overridden per-agent via frontmatter in the agent's prompt file:
+
+```yaml
+---
+name: my-agent
+model: claude-opus-4
+---
 ```
 
 ### Tool Interface

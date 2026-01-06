@@ -16,6 +16,7 @@ Budgie is an MCP server that exposes Kiro agents as MCP tools for orchestration.
 - Health monitoring with success rates, durations, and automatic retries
 - Mandatory directory parameter for explicit working directory control
 - Response file decoupling (responses written to session dir, not working dir)
+- Per-agent model selection via frontmatter (default: `claude-sonnet-4.5`)
 
 ## Sandbox Mode
 

@@ -13,4 +13,5 @@ type Config struct {
 	AgentTimeout       time.Duration
 	SandboxEnabled     bool
 	SandboxImage       string
+	Verbose            bool
 }

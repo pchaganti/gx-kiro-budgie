@@ -50,7 +50,8 @@ func main() {
 	agentTimeout := flag.Duration("agent-timeout", 10*time.Minute, "Timeout for agent execution")
 	sandboxEnabled := flag.Bool("sandbox", false, "Enable sandbox mode (run agents in Docker containers)")
 	sandboxImage := flag.String("sandbox-image", "budgie-sandbox:latest", "Docker image for sandbox mode")
-	debug := flag.Bool("debug", false, "Print tool information and exit")
+	verbose := flag.Bool("verbose", false, "Enable verbose output including chat debug logs")
+	listTools := flag.Bool("list-tools", false, "Print tool information and exit")
 	flag.Parse()
 
 	agentList, err := agents.Load(*agentsDir)
@@ -74,15 +75,16 @@ func main() {
 		AgentTimeout:       *agentTimeout,
 		SandboxEnabled:     *sandboxEnabled,
 		SandboxImage:       *sandboxImage,
+		Verbose:            *verbose,
 	}
 
 	// Create dependencies
 	healthMonitor := health.NewMonitor()
 	sessionMgr := sessions.NewManager(cfg.SessionsDir, cfg.SandboxEnabled)
-	executor := kiro.NewExecutor(cfg.KiroBinary, cfg.AgentTimeout, healthMonitor, cfg.SandboxEnabled, cfg.SandboxImage)
+	executor := kiro.NewExecutor(cfg.KiroBinary, cfg.AgentTimeout, healthMonitor, cfg.SandboxEnabled, cfg.SandboxImage, cfg.Verbose)
 
-	// Debug mode: print tool information and exit
-	if *debug {
+	// List tools mode: print tool information and exit
+	if *listTools {
 		fmt.Println("=== Debug Mode: Tool Information ===")
 		fmt.Println()
 		for _, agent := range agentList {
@@ -265,8 +267,8 @@ func createHandler(agentName, model string, sessionMgr *sessions.Manager, execut
 
 		// Load and inject system prompt with response file placeholder
 		if systemPromptTemplate, err := os.ReadFile(cfg.SystemPromptPath); err == nil {
-			// In sandbox mode, response file goes to session volume, not workspace
-			responseFilePath := responseFile
+			// Response file path must be absolute so agent knows where to write
+			responseFilePath := filepath.Join(sessionDir, responseFile)
 			if cfg.SandboxEnabled {
 				responseFilePath = "/root/.local/share/kiro-cli/" + responseFile
 			}
@@ -276,7 +278,7 @@ func createHandler(agentName, model string, sessionMgr *sessions.Manager, execut
 		}
 
 		// Pass working directory for sandbox mount
-		result := executor.ExecuteWithWorkDir(ctx, agentName, enhancedPrompt, sessionDir, input.SessionID, model, input.Directory)
+		result := executor.ExecuteWithWorkDir(ctx, agentName, enhancedPrompt, sessionDir, input.SessionID, model, input.Directory, responseFile)
 		if result.Error != nil {
 			return nil, ToolOutput{}, fmt.Errorf("%v", result.Error)
 		}
@@ -284,34 +286,38 @@ func createHandler(agentName, model string, sessionMgr *sessions.Manager, execut
 		// Determine response file path
 		var responsePath string
 		if cfg.SandboxEnabled {
-			// In sandbox mode, we need to read from the volume
-			// Use docker cp or mount inspection - for now use docker run to cat the file
-			responsePath = responseFile // Will be handled by readResponseFromVolume
+			responsePath = "/root/.local/share/kiro-cli/" + responseFile
 		} else {
 			responsePath = filepath.Join(sessionDir, responseFile)
 		}
 
 		// Try to read response file first
 		responseOutput := result.Output
+		var responseFound bool
 		if cfg.SandboxEnabled {
 			if content := readResponseFromVolume(sessionID, responseFile); content != "" {
 				responseOutput = content
+				responseFound = true
 			}
 		} else if content, err := os.ReadFile(responsePath); err == nil {
 			responseOutput = strings.TrimSpace(string(content))
-		} else if contextSummaryTemplate, err := os.ReadFile(cfg.ContextSummaryPath); err == nil {
-			// Fallback: Request file creation using template
-			fallbackPrompt := strings.ReplaceAll(string(contextSummaryTemplate), "{{RESPONSE_FILE}}", responseFile)
+			responseFound = true
+		}
 
-			fallbackResult := executor.ExecuteWithWorkDir(ctx, agentName, fallbackPrompt, sessionDir, input.SessionID, model, input.Directory)
-			if fallbackResult.Error == nil {
-				// Try reading file again after fallback
-				if cfg.SandboxEnabled {
-					if content := readResponseFromVolume(sessionID, responseFile); content != "" {
-						responseOutput = content
+		// Fallback: Request file creation using template
+		if !responseFound {
+			if contextSummaryTemplate, err := os.ReadFile(cfg.ContextSummaryPath); err == nil {
+				fallbackPrompt := strings.ReplaceAll(string(contextSummaryTemplate), "{{RESPONSE_FILE}}", responsePath)
+
+				fallbackResult := executor.ExecuteWithWorkDir(ctx, agentName, fallbackPrompt, sessionDir, sessionID, model, input.Directory, responseFile)
+				if fallbackResult.Error == nil {
+					if cfg.SandboxEnabled {
+						if content := readResponseFromVolume(sessionID, responseFile); content != "" {
+							responseOutput = content
+						}
+					} else if content, err := os.ReadFile(responsePath); err == nil {
+						responseOutput = strings.TrimSpace(string(content))
 					}
-				} else if content, err := os.ReadFile(responsePath); err == nil {
-					responseOutput = strings.TrimSpace(string(content))
 				}
 			}
 		}
