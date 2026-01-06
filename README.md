@@ -38,27 +38,27 @@ Sandbox mode runs each sub-agent inside an isolated Docker container, providing:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Host (macOS/Linux)                       │
-│                                                                  │
+│                         Host (macOS/Linux)                      │
+│                                                                 │
 │  ┌──────────────┐                                               │
 │  │   Budgie     │                                               │
 │  │  MCP Server  │                                               │
 │  └──────┬───────┘                                               │
-│         │                                                        │
-│         │ docker run                                             │
-│         ▼                                                        │
+│         │                                                       │
+│         │ docker run                                            │
+│         ▼                                                       │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │              Docker Container                            │    │
-│  │                                                          │    │
+│  │              Docker Container                           │    │
+│  │                                                         │    │
 │  │  /workspace        ← working directory (RW)             │    │
 │  │  /root/.local/share/kiro-cli  ← session volume (RW)     │    │
 │  │  /auth             ← host kiro auth (RO)                │    │
 │  │  /root/.kiro/      ← agent configs (RO)                 │    │
-│  │                                                          │    │
+│  │                                                         │    │
 │  │  kiro-cli chat --agent <name> --no-interactive <prompt> │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                                                                  │
-│  Docker Volumes:                                                 │
+│                                                                 │
+│  Docker Volumes:                                                │
 │  budgie-session-<uuid> ← one per session, deleted on exit       │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -97,7 +97,111 @@ Each session gets its own Docker volume (`budgie-session-<uuid>`), ensuring:
 - No SQLite contention
 - Clean cleanup on budgie exit
 
-For detailed implementation notes, see [SANDBOX.md](SANDBOX.md).
+### Design Decisions
+
+#### One Docker Volume Per Session
+
+Each sessionId gets a separate Docker volume, eliminating SQLite contention and maintaining clean isolation. Cleanup is mode-specific:
+
+| Mode | Cleanup Action |
+|------|----------------|
+| Normal | `os.RemoveAll(filepath.Join(baseDir, sessionId))` |
+| Sandbox | `docker volume rm budgie-session-<sessionId>` |
+
+#### Auth Token Handling
+
+Host's kiro-cli data directory is mounted read-only at `/auth`. The entrypoint copies `data.sqlite3` to the session volume on first run, then only syncs `auth_kv` table on subsequent runs (preserving conversation history).
+
+#### Prompt Enhancement for Container Paths
+
+In sandbox mode, the working directory in prompts changes from host path to `/workspace`:
+- Normal: `"In directory /Users/x/project, <prompt>"`
+- Sandbox: `"In directory /workspace, <prompt>"`
+
+#### Cross-Platform Considerations
+
+- kiro-cli binary must be Linux (cannot mount macOS binary)
+- Auth data path differs: macOS `~/Library/Application Support/kiro-cli/` vs Linux `~/.local/share/kiro-cli/`
+- Budgie detects host OS and mounts from correct path
+
+### kiro-cli Session Management
+
+Understanding how kiro-cli stores context is critical for `--resume` to work.
+
+**Storage Location:**
+- macOS: `~/Library/Application Support/kiro-cli/data.sqlite3`
+- Linux: `~/.local/share/kiro-cli/data.sqlite3`
+
+**How `--resume` Works:**
+- kiro-cli uses `pwd` as the key in `conversations_v2` table
+- `--resume` loads conversation history where `key = $(pwd)`
+- In container: `key = /root/.local/share/kiro-cli`
+- Each session volume mounted at same path → `--resume` finds history
+
+### Docker Image
+
+Custom image required because kiro-cli must be Linux binary.
+
+**Dockerfile:**
+```dockerfile
+FROM buildpack-deps:bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jdk \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /usr/share/keyrings/kubernetes.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/kubernetes.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" > /etc/apt/sources.list.d/kubernetes.list \
+    && apt-get update && apt-get install -y --no-install-recommends kubectl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends jq tree ripgrep sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://kiro.dev/install.sh | sh
+
+WORKDIR /workspace
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+```
+
+**Entrypoint Script (`docker/entrypoint.sh`):**
+```bash
+#!/bin/sh
+KIRO_DATA_DIR="/root/.local/share/kiro-cli"
+AUTH_SOURCE="/auth/data.sqlite3"
+TARGET_DB="$KIRO_DATA_DIR/data.sqlite3"
+
+mkdir -p "$KIRO_DATA_DIR"
+
+if [ ! -f "$TARGET_DB" ]; then
+    cp "$AUTH_SOURCE" "$TARGET_DB" 2>/dev/null
+elif [ -f "$AUTH_SOURCE" ]; then
+    sqlite3 "$TARGET_DB" "ATTACH '$AUTH_SOURCE' AS auth_src; \
+        DELETE FROM auth_kv; \
+        INSERT INTO auth_kv SELECT * FROM auth_src.auth_kv;" 2>/dev/null
+fi
+
+exec "$@"
+```
+
+**Full Docker Run Command:**
+```bash
+docker run --rm \
+  -v "/host/working/dir:/workspace:rw" \
+  -v "budgie-session-<sessionId>:/root/.local/share/kiro-cli:rw" \
+  -v "$HOME/Library/Application Support/kiro-cli:/auth:ro" \
+  -v "$HOME/.kiro:/root/.kiro:ro" \
+  budgie-sandbox:latest \
+  kiro-cli chat --agent <name> --no-interactive [--resume] '<prompt>'
+```
+
+### Edge Cases
+
+- **Orphaned Volumes**: If budgie crashes, volumes persist. Recovery: `docker volume ls -q | grep budgie-session- | xargs docker volume rm`
+- **Docker Not Available**: Fails fast with clear error when `--sandbox` used without Docker
+- **Network Access**: Containers need outbound HTTPS for kiro-cli API calls (default bridge networking works)
+- **MCP Servers in Container**: May reference host paths; document as limitation
 
 ---
 
